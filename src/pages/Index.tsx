@@ -12,6 +12,10 @@ import { ConfidenceBar } from "../components/ConfidenceBar";
 
 import heroBg from "../assets/hero-bg.jpg";
 
+// ✅ Real ML imports
+import * as tf from "@tensorflow/tfjs";
+import * as mobilenet from "@tensorflow-models/mobilenet";
+
 interface ManureGuidance {
   waste_name: string;
   compost_method: string;
@@ -22,7 +26,7 @@ interface ManureGuidance {
 
 interface PredictionResult {
   predicted_waste_type: WasteType;
-  confidence: number;
+  confidence: number; // percentage (0-100)
   explanation: string[];
   status: string;
   message: string;
@@ -35,12 +39,14 @@ interface WasteTypeInfo {
 }
 
 /**
- * IMPORTANT:
- * Keep these values aligned with ResultCard's WasteType union.
- * This set is intentionally minimal to avoid TS2322 ("plastic" not assignable).
+ * Must match ResultCard's WasteType exactly:
+ * export type WasteType = "organic" | "recyclable" | "hazardous";
  */
 const SUPPORTED_WASTE_TYPES = ["organic", "recyclable", "hazardous"] as const;
 type SupportedWasteType = (typeof SUPPORTED_WASTE_TYPES)[number];
+
+// ✅ Use runtime Set so SUPPORTED_WASTE_TYPES is not “type-only”
+const SUPPORTED_WASTE_TYPE_SET = new Set<SupportedWasteType>(SUPPORTED_WASTE_TYPES);
 
 const WASTE_INFO: Record<SupportedWasteType, WasteTypeInfo> = {
   organic: {
@@ -56,6 +62,197 @@ const WASTE_INFO: Record<SupportedWasteType, WasteTypeInfo> = {
     color: "labeled/colored",
   },
 };
+
+// ✅ Global model cache (loads only once)
+let mobilenetModel: mobilenet.MobileNet | null = null;
+let mobilenetModelPromise: Promise<mobilenet.MobileNet> | null = null;
+
+async function getMobileNetModel(): Promise<mobilenet.MobileNet> {
+  if (mobilenetModel) return mobilenetModel;
+
+  if (!mobilenetModelPromise) {
+    mobilenetModelPromise = (async () => {
+      try {
+        await tf.ready();
+        // Optional (faster on many devices):
+        // await tf.setBackend("webgl");
+        const m = await mobilenet.load();
+        mobilenetModel = m;
+        return m;
+      } catch (e) {
+        // allow retry if load fails
+        mobilenetModelPromise = null;
+        throw e;
+      }
+    })();
+  }
+
+  return mobilenetModelPromise;
+}
+
+function classifyImageToWaste(
+  label: string,
+  probability: number
+): {
+  type: SupportedWasteType;
+  confidence: number; // 0..1
+  reason: string;
+  action: string;
+} {
+  const lower = label.toLowerCase();
+
+  const organicKeywords = [
+    "apple",
+    "banana",
+    "orange",
+    "lemon",
+    "potato",
+    "carrot",
+    "tomato",
+    "onion",
+    "garlic",
+    "pepper",
+    "fruit",
+    "vegetable",
+    "leaf",
+    "plant",
+    "peel",
+    "food",
+    "bread",
+    "rice",
+    "pasta",
+  ];
+
+  const hazardousKeywords = [
+    "battery",
+    "chemical",
+    "medicine",
+    "pill",
+    "syringe",
+    "needle",
+    "paint",
+    "solvent",
+    "pesticide",
+    "herbicide",
+  ];
+
+  // Organic
+  if (probability > 0.15 && organicKeywords.some((kw) => lower.includes(kw))) {
+    return {
+      type: "organic",
+      confidence: Math.min(1, probability * 0.95),
+      reason: "Food/plant-based material detected from ML label.",
+      action: "Compost it (45–60 days).",
+    };
+  }
+
+  // Hazardous
+  if (probability > 0.12 && hazardousKeywords.some((kw) => lower.includes(kw))) {
+    return {
+      type: "hazardous",
+      confidence: Math.min(1, probability * 0.92),
+      reason: "Potentially hazardous object detected from ML label.",
+      action: "Dispose via authorized hazardous-waste facility.",
+    };
+  }
+
+  // Default -> recyclable
+  return {
+    type: "recyclable",
+    confidence: Math.min(1, probability * 0.88),
+    reason: "Not confidently organic/hazardous → treat as recyclable.",
+    action: "Segregate and recycle properly.",
+  };
+}
+
+async function fileToCanvas(file: File): Promise<HTMLCanvasElement> {
+  const url = URL.createObjectURL(file);
+
+  try {
+    const img = new Image();
+    img.src = url;
+
+    await new Promise<void>((resolve, reject) => {
+      img.onload = () => resolve();
+      img.onerror = () => reject(new Error("Failed to load image"));
+    });
+
+    const canvas = document.createElement("canvas");
+    canvas.width = 224;
+    canvas.height = 224;
+
+    const ctx = canvas.getContext("2d");
+    if (!ctx) throw new Error("Canvas context not available");
+
+    ctx.drawImage(img, 0, 0, 224, 224);
+    return canvas;
+  } finally {
+    URL.revokeObjectURL(url);
+  }
+}
+
+async function classifyWaste(fileParam: File): Promise<{
+  top1: { class: SupportedWasteType; confidence: number }; // confidence 0..1
+  explanations: string[];
+  status: string;
+  message: string;
+  organic: boolean;
+  manure: ManureGuidance;
+}> {
+  const model = await getMobileNetModel();
+  const canvas = await fileToCanvas(fileParam);
+
+  const fileSizeKb = Math.max(1, Math.round(fileParam.size / 1024));
+  const fileName = fileParam.name || "uploaded-image";
+
+  const preds = await model.classify(canvas, 5);
+  if (preds.length === 0) throw new Error("No predictions returned by model");
+
+  const top = preds[0];
+  const mapped = classifyImageToWaste(top.className, top.probability);
+
+  // ✅ Runtime safety + uses SUPPORTED_WASTE_TYPES at runtime (no-unused-vars fixed)
+  if (!SUPPORTED_WASTE_TYPE_SET.has(mapped.type)) {
+    throw new Error(
+      `Unsupported waste type "${mapped.type}". Supported: ${SUPPORTED_WASTE_TYPES.join(", ")}`
+    );
+  }
+
+  // ✅ Use WASTE_INFO at runtime (no-unused-vars fixed)
+  const info = WASTE_INFO[mapped.type];
+
+  const isOrganic = mapped.type === "organic";
+  const confidencePct = Math.round(mapped.confidence * 100 * 10) / 10;
+
+  const explanations: string[] = [
+    `File: ${fileName} (${fileSizeKb} KB)`,
+    `Top label: "${top.className}" (${Math.round(top.probability * 100)}%)`,
+    `Mapped waste: ${mapped.type} (${confidencePct}%)`,
+    `Reason: ${mapped.reason}`,
+    `Expected look: ${info.color}; hints: ${info.keywords.slice(0, 3).join(", ")}`,
+  ];
+
+  const status = isOrganic ? "compostable" : mapped.type;
+
+  const message = isOrganic
+    ? "Organic waste detected — perfect for composting."
+    : `${mapped.type.toUpperCase()} waste — ${mapped.action}`;
+
+  return {
+    top1: { class: mapped.type, confidence: mapped.confidence },
+    explanations,
+    status,
+    message,
+    organic: isOrganic,
+    manure: {
+      waste_name: "Kitchen/Garden Organic Waste",
+      compost_method: "Aerated pile or vermicomposting",
+      preparation_time: "45–60 days",
+      nutrients: "NPK-rich compost (approx.)",
+      suitable_crops: "Tomato, Chili, Brinjal, Onion, Leafy greens",
+    },
+  };
+}
 
 export default function Index() {
   const [image, setImage] = useState<string | null>(null);
@@ -73,13 +270,8 @@ export default function Index() {
     try {
       const predictions = await classifyWaste(file);
 
-      // SupportedWasteType is compatible with WasteType only if ResultCard supports these strings.
-      // This cast will be safe as long as ResultCard's WasteType includes:
-      // "organic" | "recyclable" | "hazardous"
-      const predicted = predictions.top1.class as unknown as WasteType;
-
       const finalResult: PredictionResult = {
-        predicted_waste_type: predicted,
+        predicted_waste_type: predictions.top1.class, // ✅ exact match
         confidence: Math.round(predictions.top1.confidence * 100 * 10) / 10,
         explanation: predictions.explanations,
         status: predictions.status,
@@ -88,72 +280,13 @@ export default function Index() {
       };
 
       setResult(finalResult);
-      console.log("✅ AI classification:", finalResult);
-    } catch (err) {
+    } catch (err: unknown) {
       console.error("AI Analysis Error:", err);
-      setError("Image analysis failed. Try a clearer waste photo.");
+      setError(err instanceof Error ? err.message : "Image analysis failed");
     } finally {
       setLoading(false);
     }
   };
-
-  async function classifyWaste(fileParam: File): Promise<{
-    top1: { class: SupportedWasteType; confidence: number };
-    explanations: string[];
-    status: string;
-    message: string;
-    organic: boolean;
-    manure: ManureGuidance;
-  }> {
-    // Use fileParam so ESLint doesn't complain about unused vars
-    const fileSizeKb = Math.max(1, Math.round(fileParam.size / 1024));
-    const fileName = fileParam.name || "uploaded-image";
-
-    // Simulated "real-time" processing delay
-    await new Promise((resolve) => setTimeout(resolve, 1800));
-
-    // Pick a supported class (aligned with ResultCard WasteType)
-    const randomType =
-      SUPPORTED_WASTE_TYPES[
-        Math.floor(Math.random() * SUPPORTED_WASTE_TYPES.length)
-      ];
-
-    const confidence = 0.78 + Math.random() * 0.2; // 78–98%
-    const isOrganic = randomType === "organic";
-
-    const explanations: string[] = [
-      `Processed: ${fileName} (${fileSizeKb} KB).`,
-      `Detected category: ${randomType} (${Math.round(confidence * 100)}% confidence).`,
-      `Heuristics: keywords=${WASTE_INFO[randomType].keywords.slice(0, 3).join(", ")}; color=${WASTE_INFO[randomType].color}.`,
-    ];
-
-    const status = isOrganic
-      ? "compostable"
-      : randomType === "hazardous"
-      ? "hazardous"
-      : "recyclable";
-
-    const message = isOrganic
-      ? "Organic waste detected. Suitable for composting."
-      : randomType === "hazardous"
-      ? "Hazardous waste detected. Dispose via authorized facility."
-      : "Recyclable waste detected. Segregate and send to recycling.";
-
-    return {
-      top1: { class: randomType, confidence },
-      explanations,
-      status,
-      message,
-      organic: isOrganic,
-      manure: {
-        waste_name: "Kitchen/Garden Organic Waste",
-        compost_method: "Aerated pile or vermicomposting",
-        preparation_time: "45–60 days",
-        nutrients: "NPK-rich compost (approx.)",
-        suitable_crops: "Tomato, Chili, Brinjal, Onion, Leafy greens",
-      },
-    };
-  }
 
   const handleClear = () => {
     setImage(null);
@@ -165,7 +298,11 @@ export default function Index() {
   return (
     <div className="min-h-screen relative overflow-hidden">
       <div className="fixed inset-0 z-0">
-        <img src={heroBg} alt="" className="w-full h-full object-cover opacity-30" />
+        <img
+          src={heroBg}
+          alt=""
+          className="w-full h-full object-cover opacity-30"
+        />
         <div className="absolute inset-0 bg-gradient-to-b from-white/70 via-white/80 to-white" />
       </div>
 
@@ -219,10 +356,10 @@ export default function Index() {
             <div className="text-center mt-8 p-8">
               <div className="inline-block animate-spin rounded-full h-12 w-12 border-b-2 border-emerald-600" />
               <p className="text-lg font-semibold text-emerald-700 mt-4">
-                🤖 AI is analyzing your image in real-time...
+                🤖 AI is analyzing your image...
               </p>
               <p className="text-sm text-gray-500 mt-1">
-                Neural network processing (simulated) (2–3 seconds)
+                First run may take longer (model download).
               </p>
             </div>
           )}
@@ -235,11 +372,13 @@ export default function Index() {
                 <span className="text-2xl">⚠️</span>
               </div>
               <div>
-                <h3 className="font-bold text-xl text-red-800 mb-2">Analysis Failed</h3>
+                <h3 className="font-bold text-xl text-red-800 mb-2">
+                  Analysis Failed
+                </h3>
                 <p className="text-red-700">{error}</p>
                 <button
                   onClick={handleClear}
-                  className="mt-4 bg-red-500 hover:bg-red-600 text-white px-6 py-2 rounded-xl text-sm font-semibold transition"
+                  className="mt-4 bg-red-500 hover:bg-red-600 text-white px-6 py-2 rounded-xl text-sm font-semibold transition-all"
                 >
                   Try Again
                 </button>
@@ -250,13 +389,10 @@ export default function Index() {
 
         {result && (
           <div className="mt-12 space-y-8">
-            <div className="text-center p-6 bg-green-50 border-2 border-green-200 rounded-3xl shadow-lg">
-              <div className="inline-flex items-center gap-2 px-6 py-3 bg-green-100 text-green-800 rounded-2xl font-bold text-lg border-2 border-green-300">
-                ✅ AI ANALYSIS COMPLETE
-              </div>
-            </div>
-
-            <ResultCard wasteType={result.predicted_waste_type} confidence={result.confidence} />
+            <ResultCard
+              wasteType={result.predicted_waste_type}
+              confidence={result.confidence}
+            />
 
             <ConfidenceBar confidence={result.confidence} />
 
@@ -274,21 +410,25 @@ export default function Index() {
               >
                 {result.status.toUpperCase()}
               </div>
-              <p className="mt-3 text-lg font-semibold text-gray-700">{result.message}</p>
+              <p className="mt-3 text-lg font-semibold text-gray-700">
+                {result.message}
+              </p>
             </div>
 
-            {result.explanation && result.explanation.length > 0 && (
+            {result.explanation.length > 0 && (
               <ExplanationCard explanation={result.explanation} />
             )}
 
-            {result.predicted_waste_type === ("organic" as unknown as WasteType) &&
-              result.manure_guidance && <GuidanceCard guidance={result.manure_guidance} />}
+            {result.predicted_waste_type === "organic" &&
+              result.manure_guidance && (
+                <GuidanceCard guidance={result.manure_guidance} />
+              )}
 
             <div className="flex gap-4 justify-center pt-8 border-t border-gray-200">
               <button
                 onClick={handleClear}
                 className="
-                  px-8 py-3 bg-gray-500 hover:bg-gray-600 text-white 
+                  px-8 py-3 bg-gray-500 hover:bg-gray-600 text-white
                   rounded-2xl font-semibold transition-all shadow-lg
                   hover:shadow-eco-lg hover:scale-[1.02]
                 "
@@ -298,7 +438,7 @@ export default function Index() {
               <button
                 onClick={() => window.print()}
                 className="
-                  px-8 py-3 bg-emerald-500 hover:bg-emerald-600 text-white 
+                  px-8 py-3 bg-emerald-500 hover:bg-emerald-600 text-white
                   rounded-2xl font-semibold transition-all shadow-lg
                   hover:shadow-eco-lg hover:scale-[1.02]
                 "
