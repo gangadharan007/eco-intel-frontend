@@ -30,6 +30,12 @@ interface PredictionResult {
   explanation: string[];
   status: string;
   message: string;
+
+  // ✅ NEW REQUIREMENTS
+  detected_item: string;
+  recyclable: boolean;
+  minerals?: string[];
+
   manure_guidance?: ManureGuidance[];
 }
 
@@ -45,7 +51,7 @@ interface WasteTypeInfo {
 const SUPPORTED_WASTE_TYPES = ["organic", "recyclable", "hazardous"] as const;
 type SupportedWasteType = (typeof SUPPORTED_WASTE_TYPES)[number];
 
-// ✅ Use runtime Set so SUPPORTED_WASTE_TYPES is not “type-only”
+// ✅ runtime usage to avoid "type-only" lint
 const SUPPORTED_WASTE_TYPE_SET = new Set<SupportedWasteType>(SUPPORTED_WASTE_TYPES);
 
 const WASTE_INFO: Record<SupportedWasteType, WasteTypeInfo> = {
@@ -74,14 +80,11 @@ async function getMobileNetModel(): Promise<mobilenet.MobileNet> {
     mobilenetModelPromise = (async () => {
       try {
         await tf.ready();
-        // Optional (faster on many devices):
-        // await tf.setBackend("webgl");
         const m = await mobilenet.load();
         mobilenetModel = m;
         return m;
       } catch (e) {
-        // allow retry if load fails
-        mobilenetModelPromise = null;
+        mobilenetModelPromise = null; // allow retry
         throw e;
       }
     })();
@@ -90,78 +93,98 @@ async function getMobileNetModel(): Promise<mobilenet.MobileNet> {
   return mobilenetModelPromise;
 }
 
-function classifyImageToWaste(
-  label: string,
-  probability: number
-): {
-  type: SupportedWasteType;
-  confidence: number; // 0..1
-  reason: string;
-  action: string;
-} {
+const ORGANIC_KEYWORDS = [
+  "apple",
+  "banana",
+  "orange",
+  "lemon",
+  "potato",
+  "carrot",
+  "tomato",
+  "onion",
+  "garlic",
+  "pepper",
+  "fruit",
+  "vegetable",
+  "leaf",
+  "plant",
+  "peel",
+  "food",
+  "bread",
+  "rice",
+  "pasta",
+];
+
+const HAZARDOUS_KEYWORDS = [
+  "battery",
+  "chemical",
+  "medicine",
+  "pill",
+  "syringe",
+  "needle",
+  "paint",
+  "solvent",
+  "pesticide",
+  "herbicide",
+];
+
+// ✅ minerals list (shown only for organic)
+const ORGANIC_MINERALS = [
+  "N (Nitrogen)",
+  "P (Phosphorus)",
+  "K (Potassium)",
+  "Ca (Calcium)",
+  "Mg (Magnesium)",
+  "S (Sulfur)",
+  "Fe (Iron)",
+  "Zn (Zinc)",
+  "Mn (Manganese)",
+  "Cu (Copper)",
+];
+
+function containsKeyword(label: string, keywords: string[]) {
   const lower = label.toLowerCase();
+  return keywords.some((kw) => lower.includes(kw));
+}
 
-  const organicKeywords = [
-    "apple",
-    "banana",
-    "orange",
-    "lemon",
-    "potato",
-    "carrot",
-    "tomato",
-    "onion",
-    "garlic",
-    "pepper",
-    "fruit",
-    "vegetable",
-    "leaf",
-    "plant",
-    "peel",
-    "food",
-    "bread",
-    "rice",
-    "pasta",
-  ];
+/**
+ * Improved mapping:
+ * Uses top-5 predictions to reduce “one bad top label” mistakes. [web:34]
+ */
+function mapPredictionsToWaste(
+  preds: Array<{ className: string; probability: number }>
+): { type: SupportedWasteType; confidence: number; reason: string } {
+  const top = preds[0];
 
-  const hazardousKeywords = [
-    "battery",
-    "chemical",
-    "medicine",
-    "pill",
-    "syringe",
-    "needle",
-    "paint",
-    "solvent",
-    "pesticide",
-    "herbicide",
-  ];
+  const organicScore = preds
+    .filter((p) => p.probability >= 0.08 && containsKeyword(p.className, ORGANIC_KEYWORDS))
+    .reduce((sum, p) => sum + p.probability, 0);
 
-  // Organic
-  if (probability > 0.15 && organicKeywords.some((kw) => lower.includes(kw))) {
-    return {
-      type: "organic",
-      confidence: Math.min(1, probability * 0.95),
-      reason: "Food/plant-based material detected from ML label.",
-      action: "Compost it (45–60 days).",
-    };
-  }
+  const hazardousScore = preds
+    .filter((p) => p.probability >= 0.08 && containsKeyword(p.className, HAZARDOUS_KEYWORDS))
+    .reduce((sum, p) => sum + p.probability, 0);
 
-  // Hazardous
-  if (probability > 0.12 && hazardousKeywords.some((kw) => lower.includes(kw))) {
+  // Decision rules
+  if (hazardousScore >= 0.12) {
     return {
       type: "hazardous",
-      confidence: Math.min(1, probability * 0.92),
-      reason: "Potentially hazardous object detected from ML label.",
-      action: "Dispose via authorized hazardous-waste facility.",
+      confidence: Math.min(1, 0.6 * hazardousScore + 0.4 * top.probability),
+      reason: "Top-K labels suggest hazardous item(s).",
     };
   }
 
-  // Default -> recyclable
+  if (organicScore >= 0.12) {
+    return {
+      type: "organic",
+      confidence: Math.min(1, 0.6 * organicScore + 0.4 * top.probability),
+      reason: "Top-K labels suggest food/plant material.",
+    };
+  }
+
   return {
     type: "recyclable",
-    confidence: Math.min(1, probability * 0.88),
+    confidence: Math.min(1, 0.7 * top.probability + 0.3 * 0.5),
     reason: "Not confidently organic/hazardous → treat as recyclable.",
-    action: "Segregate and recycle properly.",
   };
 }
 
@@ -193,6 +216,9 @@ async function fileToCanvas(file: File): Promise<HTMLCanvasElement> {
 
 async function classifyWaste(fileParam: File): Promise<{
   top1: { class: SupportedWasteType; confidence: number }; // confidence 0..1
+  detected_item: string;
+  recyclable: boolean;
+  minerals?: string[];
   explanations: string[];
   status: string;
   message: string;
@@ -205,41 +231,59 @@ async function classifyWaste(fileParam: File): Promise<{
   const fileSizeKb = Math.max(1, Math.round(fileParam.size / 1024));
   const fileName = fileParam.name || "uploaded-image";
 
+  // topK supported by mobilenet.classify [web:34]
   const preds = await model.classify(canvas, 5);
   if (preds.length === 0) throw new Error("No predictions returned by model");
 
-  const top = preds[0];
-  const mapped = classifyImageToWaste(top.className, top.probability);
+  const detected_item = preds[0].className;
 
-  // ✅ Runtime safety + uses SUPPORTED_WASTE_TYPES at runtime (no-unused-vars fixed)
+  const mapped = mapPredictionsToWaste(preds);
   if (!SUPPORTED_WASTE_TYPE_SET.has(mapped.type)) {
     throw new Error(
       `Unsupported waste type "${mapped.type}". Supported: ${SUPPORTED_WASTE_TYPES.join(", ")}`
     );
   }
 
-  // ✅ Use WASTE_INFO at runtime (no-unused-vars fixed)
+  const isOrganic = mapped.type === "organic";
+  const recyclable = mapped.type === "recyclable";
+  const minerals = isOrganic ? ORGANIC_MINERALS : undefined;
+
+  const confidencePct = Math.round(mapped.confidence * 100 * 10) / 10;
   const info = WASTE_INFO[mapped.type];
 
-  const isOrganic = mapped.type === "organic";
-  const confidencePct = Math.round(mapped.confidence * 100 * 10) / 10;
-
-  const explanations: string[] = [
-    `File: ${fileName} (${fileSizeKb} KB)`,
-    `Top label: "${top.className}" (${Math.round(top.probability * 100)}%)`,
-    `Mapped waste: ${mapped.type} (${confidencePct}%)`,
-    `Reason: ${mapped.reason}`,
-    `Expected look: ${info.color}; hints: ${info.keywords.slice(0, 3).join(", ")}`,
-  ];
+  // Compost nutrient note based on kitchen-waste compost study (example values) [web:105]
+  const organicNutrientNote = isOrganic
+    ? "Typical compost nutrients include N, P, K plus Ca, Mg, S and micronutrients like Zn, Cu, Fe, Mn (varies by feedstock)."
+    : "";
 
   const status = isOrganic ? "compostable" : mapped.type;
 
   const message = isOrganic
-    ? "Organic waste detected — perfect for composting."
-    : `${mapped.type.toUpperCase()} waste — ${mapped.action}`;
+    ? `Item: ${detected_item} | Compostable ✅ | Minerals: ${ORGANIC_MINERALS.slice(0, 6).join(
+        ", "
+      )}...`
+    : recyclable
+    ? `Item: ${detected_item} | Recyclable ✅ | Send to recycling stream.`
+    : `Item: ${detected_item} | Hazardous ⚠️ | Special disposal required.`;
+
+  const explanations: string[] = [
+    `File: ${fileName} (${fileSizeKb} KB)`,
+    `Detected item (ML): "${detected_item}"`,
+    `Waste category: ${mapped.type} (${confidencePct}%)`,
+    `Reason: ${mapped.reason}`,
+    `Expected look: ${info.color}; hints: ${info.keywords.slice(0, 3).join(", ")}`,
+    `Top-3 ML: ${preds
+      .slice(0, 3)
+      .map((p) => `${p.className} (${Math.round(p.probability * 100)}%)`)
+      .join(" | ")}`,
+    ...(isOrganic ? [organicNutrientNote] : []),
+  ];
 
   return {
     top1: { class: mapped.type, confidence: mapped.confidence },
+    detected_item,
+    recyclable,
+    minerals,
     explanations,
     status,
     message,
@@ -248,7 +292,8 @@ async function classifyWaste(fileParam: File): Promise<{
       waste_name: "Kitchen/Garden Organic Waste",
       compost_method: "Aerated pile or vermicomposting",
       preparation_time: "45–60 days",
-      nutrients: "NPK-rich compost (approx.)",
+      nutrients:
+        "Primary NPK + secondary (Ca, Mg, S) + micronutrients (Zn, Cu, Fe, Mn) (varies by waste).",
       suitable_crops: "Tomato, Chili, Brinjal, Onion, Leafy greens",
     },
   };
@@ -271,11 +316,16 @@ export default function Index() {
       const predictions = await classifyWaste(file);
 
       const finalResult: PredictionResult = {
-        predicted_waste_type: predictions.top1.class, // ✅ exact match
+        predicted_waste_type: predictions.top1.class,
         confidence: Math.round(predictions.top1.confidence * 100 * 10) / 10,
         explanation: predictions.explanations,
         status: predictions.status,
         message: predictions.message,
+
+        detected_item: predictions.detected_item,
+        recyclable: predictions.recyclable,
+        minerals: predictions.minerals,
+
         manure_guidance: predictions.organic ? [predictions.manure] : undefined,
       };
 
@@ -298,11 +348,7 @@ export default function Index() {
   return (
     <div className="min-h-screen relative overflow-hidden">
       <div className="fixed inset-0 z-0">
-        <img
-          src={heroBg}
-          alt=""
-          className="w-full h-full object-cover opacity-30"
-        />
+        <img src={heroBg} alt="" className="w-full h-full object-cover opacity-30" />
         <div className="absolute inset-0 bg-gradient-to-b from-white/70 via-white/80 to-white" />
       </div>
 
@@ -372,9 +418,7 @@ export default function Index() {
                 <span className="text-2xl">⚠️</span>
               </div>
               <div>
-                <h3 className="font-bold text-xl text-red-800 mb-2">
-                  Analysis Failed
-                </h3>
+                <h3 className="font-bold text-xl text-red-800 mb-2">Analysis Failed</h3>
                 <p className="text-red-700">{error}</p>
                 <button
                   onClick={handleClear}
@@ -389,10 +433,7 @@ export default function Index() {
 
         {result && (
           <div className="mt-12 space-y-8">
-            <ResultCard
-              wasteType={result.predicted_waste_type}
-              confidence={result.confidence}
-            />
+            <ResultCard wasteType={result.predicted_waste_type} confidence={result.confidence} />
 
             <ConfidenceBar confidence={result.confidence} />
 
@@ -410,19 +451,24 @@ export default function Index() {
               >
                 {result.status.toUpperCase()}
               </div>
-              <p className="mt-3 text-lg font-semibold text-gray-700">
-                {result.message}
-              </p>
+
+              <p className="mt-3 text-lg font-semibold text-gray-700">{result.message}</p>
+
+              {/* Extra requirement info (no new components needed) */}
+              <div className="mt-3 text-sm text-gray-600">
+                <div>Detected item: {result.detected_item}</div>
+                <div>Recyclable: {result.recyclable ? "Yes" : "No"}</div>
+                {result.predicted_waste_type === "organic" && result.minerals && (
+                  <div>Possible minerals/nutrients: {result.minerals.join(", ")}</div>
+                )}
+              </div>
             </div>
 
-            {result.explanation.length > 0 && (
-              <ExplanationCard explanation={result.explanation} />
-            )}
+            {result.explanation.length > 0 && <ExplanationCard explanation={result.explanation} />}
 
-            {result.predicted_waste_type === "organic" &&
-              result.manure_guidance && (
-                <GuidanceCard guidance={result.manure_guidance} />
-              )}
+            {result.predicted_waste_type === "organic" && result.manure_guidance && (
+              <GuidanceCard guidance={result.manure_guidance} />
+            )}
 
             <div className="flex gap-4 justify-center pt-8 border-t border-gray-200">
               <button
