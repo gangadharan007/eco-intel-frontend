@@ -2,7 +2,7 @@ import { useState } from "react";
 import { Header } from "../components/Header";
 import { FloatingLeaves } from "../components/FloatingLeaves";
 import { Leaf, Zap } from "lucide-react";
-import { API_BASE } from "../config"; // <-- put the backend URL here
+import { API_BASE } from "../config";
 
 interface CarbonResult {
   total_co2: number;
@@ -62,6 +62,9 @@ export default function CarbonFootprint() {
   return (
     <div className="min-h-screen relative overflow-hidden bg-background">
       <FloatingLeaves />
+      {/* ✅ ADDED: Pattern dots */}
+      <div className="fixed inset-0 pattern-dots opacity-40 z-0 pointer-events-none" />
+      
       <main className="relative z-10 max-w-3xl mx-auto px-4 py-10">
         <Header />
 
