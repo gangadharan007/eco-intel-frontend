@@ -2,6 +2,7 @@ import { useState } from "react";
 import { FloatingLeaves } from "../components/FloatingLeaves";
 import { Header } from "../components/Header";
 import { Search, ThermometerSun } from "lucide-react";
+import { API_BASE } from "../config";
 
 interface CropResult {
   temperature: number;
@@ -21,18 +22,14 @@ export default function CropRecommendation() {
   const [loading, setLoading] = useState(false);
   const [detecting, setDetecting] = useState(false);
 
-  // ✅ FIXED: Direct Vercel backend URL (Railway DB integration)
-  const API_BASE = "https://eco-intel-backend-e0cgnfxpj-gangadharans-projects-b991475d.vercel.app";
-
-  /* 📍 MULTIPLE LOCATION OPTIONS */
   const detectLocation = async () => {
     setDetecting(true);
 
-    // Option 1: Try IP-based location first (no permission needed)
+    // IP-based lookup first
     try {
       const res = await fetch("https://ipapi.co/json/");
       const data = await res.json();
-      
+
       if (data.city) {
         setLocation(data.city);
         alert(`📍 Detected: ${data.city}, ${data.region}`);
@@ -40,10 +37,9 @@ export default function CropRecommendation() {
         return;
       }
     } catch {
-      // Fallback to browser geolocation
+      // fall through to geolocation
     }
 
-    // Option 2: Browser geolocation
     if (!navigator.geolocation) {
       alert("Geolocation not supported");
       setDetecting(false);
@@ -53,19 +49,19 @@ export default function CropRecommendation() {
     navigator.geolocation.getCurrentPosition(
       async (pos) => {
         const { latitude, longitude } = pos.coords;
-        
-        // Use free Nominatim API (no key needed)
+
         try {
           const res = await fetch(
             `https://nominatim.openstreetmap.org/reverse?lat=${latitude}&lon=${longitude}&format=json`
           );
           const data = await res.json();
-          
-          const city = data.address?.city || 
-                      data.address?.town || 
-                      data.address?.village || 
-                      data.display_name.split(',')[0];
-          
+
+          const city =
+            data.address?.city ||
+            data.address?.town ||
+            data.address?.village ||
+            data.display_name.split(",")[0];
+
           setLocation(city || "Your City");
         } catch {
           setLocation("Your City");
@@ -80,7 +76,6 @@ export default function CropRecommendation() {
     );
   };
 
-  /* 🌾 FETCH CROPS - ✅ FIXED WITH VERCEL BACKEND + RAILWAY DB */
   const fetchCrops = async () => {
     if (!location.trim() || !soil || !season) {
       alert("Please fill all fields");
@@ -90,14 +85,13 @@ export default function CropRecommendation() {
     setLoading(true);
 
     try {
-      // ✅ FIXED: Correct Vercel endpoint + saves to Railway DB
       const res = await fetch(`${API_BASE}/api/crop-recommend`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ 
-          location: location.trim(), 
-          soil, 
-          season 
+        body: JSON.stringify({
+          location: location.trim(),
+          soil,
+          season,
         }),
       });
 
@@ -108,10 +102,7 @@ export default function CropRecommendation() {
 
       const data: CropResult = await res.json();
       setResult(data);
-      
-      // ✅ SUCCESS: Data saved to Railway DB automatically
       console.log("✅ Crop recommendation saved to Railway DB:", data);
-      
     } catch (err: unknown) {
       console.error("Crop API Error:", err);
       if (err instanceof Error) {
@@ -124,10 +115,17 @@ export default function CropRecommendation() {
     }
   };
 
-  // Popular Indian cities for quick selection
   const popularCities = [
-    "Mumbai", "Delhi", "Bangalore", "Chennai", "Hyderabad", 
-    "Pune", "Ahmedabad", "Jaipur", "Lucknow", "Patna"
+    "Mumbai",
+    "Delhi",
+    "Bangalore",
+    "Chennai",
+    "Hyderabad",
+    "Pune",
+    "Ahmedabad",
+    "Jaipur",
+    "Lucknow",
+    "Patna",
   ];
 
   return (
@@ -143,13 +141,12 @@ export default function CropRecommendation() {
             🌾 Weather-Based Crop Recommendation
           </h2>
 
-          {/* 📍 Location Section */}
+          {/* Location */}
           <div className="space-y-3 mb-6 p-4 bg-blue-50/50 rounded-2xl border border-blue-200">
             <label className="text-lg font-semibold text-blue-800 block text-center">
               📍 Enter Your Location
             </label>
-            
-            {/* Location Input */}
+
             <div className="relative">
               <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
               <input
@@ -160,7 +157,6 @@ export default function CropRecommendation() {
               />
             </div>
 
-            {/* Quick Actions */}
             <div className="flex flex-wrap gap-2 justify-center">
               <button
                 onClick={detectLocation}
@@ -169,20 +165,22 @@ export default function CropRecommendation() {
               >
                 {detecting ? "🔍 Detecting..." : "📍 Auto Detect"}
               </button>
-              
-              <select 
+
+              <select
                 onChange={(e) => setLocation(e.target.value)}
                 className="px-3 py-2 bg-white border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-400"
               >
                 <option value="">Popular Cities</option>
-                {popularCities.map(city => (
-                  <option key={city} value={city}>{city}</option>
+                {popularCities.map((city) => (
+                  <option key={city} value={city}>
+                    {city}
+                  </option>
                 ))}
               </select>
             </div>
           </div>
 
-          {/* Soil Type */}
+          {/* Soil */}
           <div className="space-y-2">
             <label className="text-sm font-semibold text-green-700 block">
               🏞️ Soil Type
@@ -216,7 +214,6 @@ export default function CropRecommendation() {
             </select>
           </div>
 
-          {/* BUTTON */}
           <button
             onClick={fetchCrops}
             disabled={loading || !location || !soil || !season}
@@ -229,11 +226,12 @@ export default function CropRecommendation() {
               disabled:opacity-50 disabled:cursor-not-allowed
             "
           >
-            {loading ? "🌤️ Analyzing Weather & Saving..." : "🚀 Get Crop Recommendations"}
+            {loading
+              ? "🌤️ Analyzing Weather & Saving..."
+              : "🚀 Get Crop Recommendations"}
           </button>
         </div>
 
-        {/* RESULT */}
         {result && (
           <div className="mt-8 glass-card rounded-3xl p-8 animate-fade-up">
             <div className="flex items-center justify-between mb-6">
@@ -244,7 +242,9 @@ export default function CropRecommendation() {
                   className="w-20 h-20 shadow-lg"
                 />
                 <div>
-                  <p className="font-bold text-xl capitalize">{result.weather_desc}</p>
+                  <p className="font-bold text-xl capitalize">
+                    {result.weather_desc}
+                  </p>
                   <p className="text-2xl font-black text-green-700">
                     🌡 {result.temperature}°C
                   </p>
@@ -269,7 +269,10 @@ export default function CropRecommendation() {
                 </h4>
                 <div className="space-y-2">
                   {result.recommended_crops.map((crop, i) => (
-                    <div key={i} className="flex items-center gap-3 p-3 bg-green-100/50 rounded-xl border-l-4 border-green-400">
+                    <div
+                      key={i}
+                      className="flex items-center gap-3 p-3 bg-green-100/50 rounded-xl border-l-4 border-green-400"
+                    >
                       <div className="w-2 h-2 bg-green-500 rounded-full" />
                       <span className="font-semibold">{crop}</span>
                     </div>
@@ -283,8 +286,13 @@ export default function CropRecommendation() {
                 </h4>
                 <div className="space-y-2">
                   {result.explanation.map((reason, i) => (
-                    <div key={i} className="flex items-start gap-3 p-3 bg-blue-50/50 rounded-xl border-l-4 border-blue-400">
-                      <span className="font-mono text-sm bg-blue-200 px-2 py-1 rounded-full text-blue-800">#{i+1}</span>
+                    <div
+                      key={i}
+                      className="flex items-start gap-3 p-3 bg-blue-50/50 rounded-xl border-l-4 border-blue-400"
+                    >
+                      <span className="font-mono text-sm bg-blue-200 px-2 py-1 rounded-full text-blue-800">
+                        #{i + 1}
+                      </span>
                       <span>{reason}</span>
                     </div>
                   ))}
@@ -292,13 +300,14 @@ export default function CropRecommendation() {
               </div>
             </div>
 
-            {/* 🗺️ MAP */}
             <div className="mt-8 rounded-2xl overflow-hidden border-2 border-green-200 shadow-2xl">
               <iframe
                 title="location map"
                 width="100%"
                 height="300"
-                src={`https://www.google.com/maps?q=${encodeURIComponent(location)}&output=embed`}
+                src={`https://www.google.com/maps?q=${encodeURIComponent(
+                  location
+                )}&output=embed`}
                 className="w-full"
               />
             </div>

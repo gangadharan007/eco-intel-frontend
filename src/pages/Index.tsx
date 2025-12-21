@@ -9,10 +9,9 @@ import { StatsBar } from "../components/StatsBar";
 import { FeatureCards } from "../components/FeatureCards";
 import { ExplanationCard } from "../components/ExplanationCard";
 import { ConfidenceBar } from "../components/ConfidenceBar";
+import { API_BASE } from "../config";
 
 import heroBg from "../assets/hero-bg.jpg";
-
-/* ---------------- TYPES ---------------- */
 
 interface ManureGuidance {
   waste_name: string;
@@ -31,8 +30,6 @@ interface PredictionResult {
   manure_guidance?: ManureGuidance[];
 }
 
-/* ---------------- PAGE ---------------- */
-
 export default function Index() {
   const [image, setImage] = useState<string | null>(null);
   const [file, setFile] = useState<File | null>(null);
@@ -40,21 +37,16 @@ export default function Index() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // ✅ FIXED: Direct Vercel backend URL (Railway DB integration)
-  const API_BASE = "https://eco-intel-backend-e0cgnfxpj-gangadharans-projects-b991475d.vercel.app";
-
-  /* ----------- ANALYZE IMAGE ----------- */
   const handleAnalyze = async () => {
     if (!file) return;
 
     setLoading(true);
     setError(null);
-    
+
     const formData = new FormData();
     formData.append("image", file);
 
     try {
-      // ✅ FIXED: Correct Vercel endpoint + saves to Railway DB
       const res = await fetch(`${API_BASE}/api/waste`, {
         method: "POST",
         body: formData,
@@ -67,10 +59,7 @@ export default function Index() {
 
       const data: PredictionResult = await res.json();
       setResult(data);
-      
-      // ✅ SUCCESS: Data saved to Railway DB automatically
       console.log("✅ Waste analysis saved to Railway DB:", data);
-      
     } catch (err: unknown) {
       console.error("Waste AI Error:", err);
       setError(err instanceof Error ? err.message : "Analysis failed");
@@ -86,11 +75,8 @@ export default function Index() {
     setError(null);
   };
 
-  /* ---------------- UI ---------------- */
-
   return (
     <div className="min-h-screen relative overflow-hidden">
-      {/* 🌄 Hero Background */}
       <div className="fixed inset-0 z-0">
         <img
           src={heroBg}
@@ -100,27 +86,22 @@ export default function Index() {
         <div className="absolute inset-0 bg-gradient-to-b from-white/70 via-white/80 to-white" />
       </div>
 
-      {/* 🍃 Floating Leaves */}
       <FloatingLeaves />
-
-      {/* Pattern Overlay */}
       <div className="fixed inset-0 pattern-dots pointer-events-none z-0 opacity-40" />
 
       <main className="relative z-10 max-w-4xl mx-auto px-4 py-10">
         <Header />
-
         <StatsBar />
-
         <FeatureCards />
 
-        {/* -------- Upload Section -------- */}
         <section className="glass-card p-8 rounded-2xl mt-8">
           <div className="text-center mb-8">
             <h2 className="text-4xl font-black bg-gradient-to-r from-green-600 to-emerald-600 bg-clip-text text-transparent mb-4">
               🗑️ AI Waste Classifier
             </h2>
             <p className="text-xl text-green-700 max-w-2xl mx-auto">
-              Upload waste image to get instant classification + composting guidance
+              Upload waste image to get instant classification + composting
+              guidance
             </p>
           </div>
 
@@ -133,7 +114,6 @@ export default function Index() {
             onClear={handleClear}
           />
 
-          {/* Analyze Button */}
           {image && !result && !loading && (
             <div className="text-center mt-8">
               <button
@@ -153,19 +133,19 @@ export default function Index() {
             </div>
           )}
 
-          {/* Loading */}
           {loading && (
             <div className="text-center mt-8 p-8">
               <div className="inline-block animate-spin rounded-full h-12 w-12 border-b-2 border-emerald-600"></div>
               <p className="text-lg font-semibold text-emerald-700 mt-4">
                 AI is analyzing your image & saving to database...
               </p>
-              <p className="text-sm text-gray-500 mt-1">This takes 3-5 seconds</p>
+              <p className="text-sm text-gray-500 mt-1">
+                This takes 3–5 seconds
+              </p>
             </div>
           )}
         </section>
 
-        {/* -------- Error -------- */}
         {error && !loading && (
           <div className="mt-8 p-6 rounded-2xl bg-red-50 border-2 border-red-200">
             <div className="flex items-center gap-3">
@@ -173,7 +153,9 @@ export default function Index() {
                 <span className="text-2xl">⚠️</span>
               </div>
               <div>
-                <h3 className="font-bold text-xl text-red-800 mb-2">Analysis Failed</h3>
+                <h3 className="font-bold text-xl text-red-800 mb-2">
+                  Analysis Failed
+                </h3>
                 <p className="text-red-700">{error}</p>
                 <button
                   onClick={handleClear}
@@ -186,33 +168,33 @@ export default function Index() {
           </div>
         )}
 
-        {/* -------- Results Section -------- */}
         {result && (
           <div className="mt-12 space-y-8">
-            {/* ✅ SAVED TO DB Badge */}
             <div className="text-center p-6 bg-green-50 border-2 border-green-200 rounded-3xl shadow-lg">
               <div className="inline-flex items-center gap-2 px-6 py-3 bg-green-100 text-green-800 rounded-2xl font-bold text-lg border-2 border-green-300">
                 ✅ ANALYSIS SAVED TO RAILWAY DATABASE
               </div>
             </div>
 
-            {/* Main Result */}
             <ResultCard
               wasteType={result.predicted_waste_type}
               confidence={result.confidence}
             />
 
-            {/* Confidence Visualization */}
             <ConfidenceBar confidence={result.confidence} />
 
-            {/* Status Message */}
             <div className="glass-card p-6 rounded-2xl text-center">
-              <div className={`inline-flex items-center gap-2 px-6 py-3 rounded-2xl text-lg font-bold ${
-                result.status === "compostable" ? "bg-emerald-100 text-emerald-800 border-2 border-emerald-300" :
-                result.status === "recyclable" ? "bg-blue-100 text-blue-800 border-2 border-blue-300" :
-                result.status === "hazardous" ? "bg-red-100 text-red-800 border-2 border-red-300" :
-                "bg-yellow-100 text-yellow-800 border-2 border-yellow-300"
-              }`}>
+              <div
+                className={`inline-flex items-center gap-2 px-6 py-3 rounded-2xl text-lg font-bold ${
+                  result.status === "compostable"
+                    ? "bg-emerald-100 text-emerald-800 border-2 border-emerald-300"
+                    : result.status === "recyclable"
+                    ? "bg-blue-100 text-blue-800 border-2 border-blue-300"
+                    : result.status === "hazardous"
+                    ? "bg-red-100 text-red-800 border-2 border-red-300"
+                    : "bg-yellow-100 text-yellow-800 border-2 border-yellow-300"
+                }`}
+              >
                 {result.status.toUpperCase()}
               </div>
               <p className="mt-3 text-lg font-semibold text-gray-700">
@@ -220,17 +202,15 @@ export default function Index() {
               </p>
             </div>
 
-            {/* 🔍 WHY this result */}
             {result.explanation && result.explanation.length > 0 && (
               <ExplanationCard explanation={result.explanation} />
             )}
 
-            {/* 🌱 Manure Guidance - ONLY FOR ORGANIC */}
-            {result.predicted_waste_type === "organic" && result.manure_guidance && (
-              <GuidanceCard guidance={result.manure_guidance} />
-            )}
+            {result.predicted_waste_type === "organic" &&
+              result.manure_guidance && (
+                <GuidanceCard guidance={result.manure_guidance} />
+              )}
 
-            {/* Action Buttons */}
             <div className="flex gap-4 justify-center pt-8 border-t border-gray-200">
               <button
                 onClick={handleClear}

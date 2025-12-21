@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Header } from "../components/Header";
 import { FloatingLeaves } from "../components/FloatingLeaves";
 import { Leaf, Zap } from "lucide-react";
+import { API_BASE } from "../config"; // <-- put the backend URL here
 
 interface CarbonResult {
   total_co2: number;
@@ -19,11 +20,7 @@ export default function CarbonFootprint() {
   const [result, setResult] = useState<CarbonResult | null>(null);
   const [loading, setLoading] = useState(false);
 
-  // ✅ FIXED: Direct Vercel backend URL (Railway DB integration)
-  const API_BASE = "https://eco-intel-backend-e0cgnfxpj-gangadharans-projects-b991475d.vercel.app";
-
   const calculate = async () => {
-    // ✅ VALIDATION
     if (fertilizer === 0 && diesel === 0 && electricity === 0) {
       alert("Please enter at least one value");
       return;
@@ -32,7 +29,6 @@ export default function CarbonFootprint() {
     try {
       setLoading(true);
 
-      // ✅ FIXED: Correct endpoint + saves to Railway DB
       const res = await fetch(`${API_BASE}/api/carbon`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -50,10 +46,7 @@ export default function CarbonFootprint() {
 
       const data: CarbonResult = await res.json();
       setResult(data);
-      
-      // ✅ SUCCESS: Data saved to Railway DB automatically
       console.log("✅ Saved to Railway DB:", data);
-      
     } catch (err: unknown) {
       console.error("Carbon API Error:", err);
       if (err instanceof Error) {
@@ -80,7 +73,6 @@ export default function CarbonFootprint() {
             </h2>
           </div>
 
-          {/* ✅ LABELED INPUTS */}
           <div className="space-y-4">
             <div>
               <label className="block text-sm font-semibold text-gray-700 mb-1">
@@ -95,7 +87,9 @@ export default function CarbonFootprint() {
                 value={fertilizer}
                 onChange={(e) => setFertilizer(Number(e.target.value) || 0)}
               />
-              <p className="text-xs text-gray-500 mt-1">kg of chemical fertilizer</p>
+              <p className="text-xs text-gray-500 mt-1">
+                kg of chemical fertilizer
+              </p>
             </div>
 
             <div>
@@ -111,7 +105,9 @@ export default function CarbonFootprint() {
                 value={diesel}
                 onChange={(e) => setDiesel(Number(e.target.value) || 0)}
               />
-              <p className="text-xs text-gray-500 mt-1">liters for tractor/pump</p>
+              <p className="text-xs text-gray-500 mt-1">
+                liters for tractor/pump
+              </p>
             </div>
 
             <div>
@@ -127,7 +123,9 @@ export default function CarbonFootprint() {
                 value={electricity}
                 onChange={(e) => setElectricity(Number(e.target.value) || 0)}
               />
-              <p className="text-xs text-gray-500 mt-1">kWh for pump/irrigation</p>
+              <p className="text-xs text-gray-500 mt-1">
+                kWh for pump/irrigation
+              </p>
             </div>
           </div>
 
@@ -146,35 +144,52 @@ export default function CarbonFootprint() {
             {loading ? "🌍 Calculating & Saving..." : "Calculate Carbon Footprint"}
           </button>
 
-          {/* ✅ ENHANCED RESULTS */}
           {result && (
             <div className="mt-8 p-8 rounded-2xl bg-gradient-to-r from-green-50 to-emerald-50 border-2 border-green-200 shadow-2xl">
               <div className="text-center mb-6">
-                <div className={`inline-flex items-center gap-2 px-6 py-3 rounded-full text-lg font-bold ${
-                  result.status === "Low" ? "bg-green-100 text-green-800 border-2 border-green-300" :
-                  result.status === "Medium" ? "bg-yellow-100 text-yellow-800 border-2 border-yellow-300" :
-                  "bg-red-100 text-red-800 border-2 border-red-300"
-                }`}>
+                <div
+                  className={`inline-flex items-center gap-2 px-6 py-3 rounded-full text-lg font-bold ${
+                    result.status === "Low"
+                      ? "bg-green-100 text-green-800 border-2 border-green-300"
+                      : result.status === "Medium"
+                      ? "bg-yellow-100 text-yellow-800 border-2 border-yellow-300"
+                      : "bg-red-100 text-red-800 border-2 border-red-300"
+                  }`}
+                >
                   ✅ SAVED TO DATABASE | {result.status} EMISSIONS
                 </div>
               </div>
 
               <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4 mb-6">
                 <div className="p-4 bg-white/70 rounded-xl text-center">
-                  <p className="text-3xl font-black text-green-600">{result.total_co2}</p>
-                  <p className="text-sm uppercase tracking-wide text-gray-600">Total CO₂</p>
-                  <p className="text-xs text-green-600 font-semibold">kg emitted (SAVED)</p>
+                  <p className="text-3xl font-black text-green-600">
+                    {result.total_co2}
+                  </p>
+                  <p className="text-sm uppercase tracking-wide text-gray-600">
+                    Total CO₂
+                  </p>
+                  <p className="text-xs text-green-600 font-semibold">
+                    kg emitted (SAVED)
+                  </p>
                 </div>
                 {result.fertilizer_co2 && (
                   <div className="p-4 bg-white/70 rounded-xl text-center">
-                    <p className="text-xl font-bold text-green-700">{result.fertilizer_co2}</p>
-                    <p className="text-xs uppercase tracking-wide text-gray-600">Fertilizer</p>
+                    <p className="text-xl font-bold text-green-700">
+                      {result.fertilizer_co2}
+                    </p>
+                    <p className="text-xs uppercase tracking-wide text-gray-600">
+                      Fertilizer
+                    </p>
                   </div>
                 )}
                 {result.diesel_co2 && (
                   <div className="p-4 bg-white/70 rounded-xl text-center">
-                    <p className="text-xl font-bold text-orange-700">{result.diesel_co2}</p>
-                    <p className="text-xs uppercase tracking-wide text-gray-600">Diesel</p>
+                    <p className="text-xl font-bold text-orange-700">
+                      {result.diesel_co2}
+                    </p>
+                    <p className="text-xs uppercase tracking-wide text-gray-600">
+                      Diesel
+                    </p>
                   </div>
                 )}
               </div>
@@ -186,7 +201,10 @@ export default function CarbonFootprint() {
                   </h4>
                   <ul className="space-y-2 list-none">
                     {result.suggestions.map((suggestion, i) => (
-                      <li key={i} className="flex items-start gap-3 p-3 bg-white/50 rounded-lg border-l-4 border-green-400">
+                      <li
+                        key={i}
+                        className="flex items-start gap-3 p-3 bg-white/50 rounded-lg border-l-4 border-green-400"
+                      >
                         <div className="w-2 h-2 bg-green-500 rounded-full mt-2 flex-shrink-0" />
                         <span>{suggestion}</span>
                       </li>

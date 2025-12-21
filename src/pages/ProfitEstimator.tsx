@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Header } from "../components/Header";
 import { FloatingLeaves } from "../components/FloatingLeaves";
+import { API_BASE } from "../config";
 
 interface ProfitResult {
   total_cost: number;
@@ -19,9 +20,6 @@ export default function ProfitEstimator() {
   const [result, setResult] = useState<ProfitResult | null>(null);
   const [loading, setLoading] = useState(false);
 
-  // ✅ FIXED: Direct Vercel backend URL (Railway DB integration)
-  const API_BASE = "https://eco-intel-backend-e0cgnfxpj-gangadharans-projects-b991475d.vercel.app";
-
   const calculateProfit = async () => {
     if (!seedCost && !fertilizerCost && !laborCost && !waterCost && !expectedIncome) {
       alert("Please enter some values");
@@ -31,7 +29,6 @@ export default function ProfitEstimator() {
     setLoading(true);
 
     try {
-      // ✅ FIXED: Correct Vercel endpoint + saves to Railway DB
       const res = await fetch(`${API_BASE}/api/profit`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -51,10 +48,7 @@ export default function ProfitEstimator() {
 
       const data: ProfitResult = await res.json();
       setResult(data);
-      
-      // ✅ SUCCESS: Data saved to Railway DB automatically
       console.log("✅ Profit analysis saved to Railway DB:", data);
-      
     } catch (err: unknown) {
       console.error("Profit API Error:", err);
       if (err instanceof Error) {
@@ -208,34 +202,44 @@ export default function ProfitEstimator() {
               </div>
 
               <div className="text-center mb-6">
-                <div className={`inline-flex items-center gap-2 px-4 py-2 rounded-full text-sm font-bold ${
-                  result.profit >= 0 
-                    ? "bg-green-100 text-green-800 border-2 border-green-300" 
-                    : "bg-red-100 text-red-800 border-2 border-red-300"
-                }`}>
+                <div
+                  className={`inline-flex items-center gap-2 px-4 py-2 rounded-full text-sm font-bold ${
+                    result.profit >= 0
+                      ? "bg-green-100 text-green-800 border-2 border-green-300"
+                      : "bg-red-100 text-red-800 border-2 border-red-300"
+                  }`}
+                >
                   {result.profit >= 0 ? "✅ PROFIT" : "❌ LOSS"}
                 </div>
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-center">
                 <div className="p-4 bg-white/50 rounded-xl backdrop-blur-sm">
-                  <p className="text-2xl font-bold text-green-700">₹{result.total_cost.toLocaleString()}</p>
+                  <p className="text-2xl font-bold text-green-700">
+                    ₹{result.total_cost.toLocaleString()}
+                  </p>
                   <p className="text-sm text-green-600 uppercase tracking-wide">Total Cost</p>
                 </div>
 
                 <div className="p-4 bg-white/50 rounded-xl backdrop-blur-sm">
-                  <p className="text-2xl font-bold text-emerald-700">₹{result.total_income.toLocaleString()}</p>
+                  <p className="text-2xl font-bold text-emerald-700">
+                    ₹{result.total_income.toLocaleString()}
+                  </p>
                   <p className="text-sm text-emerald-600 uppercase tracking-wide">Total Income</p>
                 </div>
 
-                <div className={`p-4 rounded-xl backdrop-blur-sm ${
-                  result.profit >= 0 
-                    ? "bg-green-100/80 border-2 border-green-300" 
-                    : "bg-red-100/80 border-2 border-red-300"
-                }`}>
-                  <p className={`text-2xl font-bold ${
-                    result.profit >= 0 ? "text-green-700" : "text-red-600"
-                  }`}>
+                <div
+                  className={`p-4 rounded-xl backdrop-blur-sm ${
+                    result.profit >= 0
+                      ? "bg-green-100/80 border-2 border-green-300"
+                      : "bg-red-100/80 border-2 border-red-300"
+                  }`}
+                >
+                  <p
+                    className={`text-2xl font-bold ${
+                      result.profit >= 0 ? "text-green-700" : "text-red-600"
+                    }`}
+                  >
                     ₹{result.profit.toLocaleString()}
                   </p>
                   <p className="text-sm uppercase tracking-wide font-semibold">
