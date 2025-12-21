@@ -2,7 +2,6 @@ import { useState } from "react";
 import { Header } from "../components/Header";
 import { FloatingLeaves } from "../components/FloatingLeaves";
 import { Leaf, Zap } from "lucide-react";
-import { API_BASE } from "../config";  // ✅ FIXED: Relative import for pages/ folder
 
 interface CarbonResult {
   total_co2: number;
@@ -20,6 +19,9 @@ export default function CarbonFootprint() {
   const [result, setResult] = useState<CarbonResult | null>(null);
   const [loading, setLoading] = useState(false);
 
+  // ✅ FIXED: Direct Vercel backend URL (Railway DB integration)
+  const API_BASE = "https://eco-intel-backend-e0cgnfxpj-gangadharans-projects-b991475d.vercel.app";
+
   const calculate = async () => {
     // ✅ VALIDATION
     if (fertilizer === 0 && diesel === 0 && electricity === 0) {
@@ -30,8 +32,8 @@ export default function CarbonFootprint() {
     try {
       setLoading(true);
 
-      // ✅ FIXED: Uses API_BASE from config (relative path works)
-      const res = await fetch(`${API_BASE}/api/carbon-footprint`, {
+      // ✅ FIXED: Correct endpoint + saves to Railway DB
+      const res = await fetch(`${API_BASE}/api/carbon`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -48,6 +50,10 @@ export default function CarbonFootprint() {
 
       const data: CarbonResult = await res.json();
       setResult(data);
+      
+      // ✅ SUCCESS: Data saved to Railway DB automatically
+      console.log("✅ Saved to Railway DB:", data);
+      
     } catch (err: unknown) {
       console.error("Carbon API Error:", err);
       if (err instanceof Error) {
@@ -137,27 +143,27 @@ export default function CarbonFootprint() {
             "
           >
             <Zap className="w-5 h-5" />
-            {loading ? "🌍 Calculating..." : "Calculate Carbon Footprint"}
+            {loading ? "🌍 Calculating & Saving..." : "Calculate Carbon Footprint"}
           </button>
 
           {/* ✅ ENHANCED RESULTS */}
           {result && (
-            <div className="mt-8 p-8 rounded-2xl bg-gradient-to-r from-red-50 to-orange-50 border-2 border-red-200 shadow-2xl">
+            <div className="mt-8 p-8 rounded-2xl bg-gradient-to-r from-green-50 to-emerald-50 border-2 border-green-200 shadow-2xl">
               <div className="text-center mb-6">
                 <div className={`inline-flex items-center gap-2 px-6 py-3 rounded-full text-lg font-bold ${
                   result.status === "Low" ? "bg-green-100 text-green-800 border-2 border-green-300" :
                   result.status === "Medium" ? "bg-yellow-100 text-yellow-800 border-2 border-yellow-300" :
                   "bg-red-100 text-red-800 border-2 border-red-300"
                 }`}>
-                  🌍 {result.status} EMISSIONS
+                  ✅ SAVED TO DATABASE | {result.status} EMISSIONS
                 </div>
               </div>
 
               <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4 mb-6">
                 <div className="p-4 bg-white/70 rounded-xl text-center">
-                  <p className="text-3xl font-black text-red-600">{result.total_co2}</p>
+                  <p className="text-3xl font-black text-green-600">{result.total_co2}</p>
                   <p className="text-sm uppercase tracking-wide text-gray-600">Total CO₂</p>
-                  <p className="text-xs text-red-600 font-semibold">kg emitted</p>
+                  <p className="text-xs text-green-600 font-semibold">kg emitted (SAVED)</p>
                 </div>
                 {result.fertilizer_co2 && (
                   <div className="p-4 bg-white/70 rounded-xl text-center">

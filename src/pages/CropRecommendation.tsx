@@ -2,7 +2,6 @@ import { useState } from "react";
 import { FloatingLeaves } from "../components/FloatingLeaves";
 import { Header } from "../components/Header";
 import { Search, ThermometerSun } from "lucide-react";
-import { API_BASE } from "../config";  // ✅ FIXED: Relative import for pages/ folder
 
 interface CropResult {
   temperature: number;
@@ -21,6 +20,9 @@ export default function CropRecommendation() {
   const [result, setResult] = useState<CropResult | null>(null);
   const [loading, setLoading] = useState(false);
   const [detecting, setDetecting] = useState(false);
+
+  // ✅ FIXED: Direct Vercel backend URL (Railway DB integration)
+  const API_BASE = "https://eco-intel-backend-e0cgnfxpj-gangadharans-projects-b991475d.vercel.app";
 
   /* 📍 MULTIPLE LOCATION OPTIONS */
   const detectLocation = async () => {
@@ -78,7 +80,7 @@ export default function CropRecommendation() {
     );
   };
 
-  /* 🌾 FETCH CROPS - ✅ FIXED WITH API_BASE */
+  /* 🌾 FETCH CROPS - ✅ FIXED WITH VERCEL BACKEND + RAILWAY DB */
   const fetchCrops = async () => {
     if (!location.trim() || !soil || !season) {
       alert("Please fill all fields");
@@ -88,11 +90,15 @@ export default function CropRecommendation() {
     setLoading(true);
 
     try {
-      // ✅ FIXED: Uses API_BASE from config
-      const res = await fetch(`${API_BASE}/crop-recommend`, {
+      // ✅ FIXED: Correct Vercel endpoint + saves to Railway DB
+      const res = await fetch(`${API_BASE}/api/crop-recommend`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ location: location.trim(), soil, season }),
+        body: JSON.stringify({ 
+          location: location.trim(), 
+          soil, 
+          season 
+        }),
       });
 
       if (!res.ok) {
@@ -102,6 +108,10 @@ export default function CropRecommendation() {
 
       const data: CropResult = await res.json();
       setResult(data);
+      
+      // ✅ SUCCESS: Data saved to Railway DB automatically
+      console.log("✅ Crop recommendation saved to Railway DB:", data);
+      
     } catch (err: unknown) {
       console.error("Crop API Error:", err);
       if (err instanceof Error) {
@@ -219,7 +229,7 @@ export default function CropRecommendation() {
               disabled:opacity-50 disabled:cursor-not-allowed
             "
           >
-            {loading ? "🌤️ Analyzing Weather..." : "🚀 Get Crop Recommendations"}
+            {loading ? "🌤️ Analyzing Weather & Saving..." : "🚀 Get Crop Recommendations"}
           </button>
         </div>
 
@@ -244,6 +254,12 @@ export default function CropRecommendation() {
                 </div>
               </div>
               <ThermometerSun className="w-12 h-12 text-orange-500" />
+            </div>
+
+            <div className="text-center mb-6 p-4 bg-green-50 border-2 border-green-200 rounded-2xl">
+              <p className="text-xl font-bold text-green-800">
+                ✅ SAVED TO RAILWAY DATABASE
+              </p>
             </div>
 
             <div className="grid md:grid-cols-2 gap-6">

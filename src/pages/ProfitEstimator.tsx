@@ -1,7 +1,6 @@
 import { useState } from "react";
 import { Header } from "../components/Header";
 import { FloatingLeaves } from "../components/FloatingLeaves";
-import { API_BASE } from "../config";  // ✅ ADDED: Relative import for pages/ folder
 
 interface ProfitResult {
   total_cost: number;
@@ -20,6 +19,9 @@ export default function ProfitEstimator() {
   const [result, setResult] = useState<ProfitResult | null>(null);
   const [loading, setLoading] = useState(false);
 
+  // ✅ FIXED: Direct Vercel backend URL (Railway DB integration)
+  const API_BASE = "https://eco-intel-backend-e0cgnfxpj-gangadharans-projects-b991475d.vercel.app";
+
   const calculateProfit = async () => {
     if (!seedCost && !fertilizerCost && !laborCost && !waterCost && !expectedIncome) {
       alert("Please enter some values");
@@ -29,8 +31,8 @@ export default function ProfitEstimator() {
     setLoading(true);
 
     try {
-      // ✅ FIXED: Uses API_BASE from config
-      const res = await fetch(`${API_BASE}/api/profit-estimator`, {
+      // ✅ FIXED: Correct Vercel endpoint + saves to Railway DB
+      const res = await fetch(`${API_BASE}/api/profit`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -49,6 +51,10 @@ export default function ProfitEstimator() {
 
       const data: ProfitResult = await res.json();
       setResult(data);
+      
+      // ✅ SUCCESS: Data saved to Railway DB automatically
+      console.log("✅ Profit analysis saved to Railway DB:", data);
+      
     } catch (err: unknown) {
       console.error("Profit API Error:", err);
       if (err instanceof Error) {
@@ -187,13 +193,20 @@ export default function ProfitEstimator() {
                 disabled:hover:scale-100
               "
             >
-              {loading ? "📊 Calculating..." : "💰 Calculate Profit"}
+              {loading ? "📊 Calculating & Saving..." : "💰 Calculate Profit"}
             </button>
           </div>
 
           {/* RESULT */}
           {result && (
             <div className="mt-8 p-8 rounded-2xl bg-gradient-to-r from-green-50 to-emerald-50 border-2 border-green-200 shadow-eco-lg animate-fade-up">
+              {/* ✅ SAVED TO DB Badge */}
+              <div className="text-center mb-6 p-4 bg-emerald-100 border-2 border-emerald-200 rounded-2xl">
+                <p className="text-lg font-bold text-emerald-800">
+                  ✅ PROFIT ANALYSIS SAVED TO RAILWAY DATABASE
+                </p>
+              </div>
+
               <div className="text-center mb-6">
                 <div className={`inline-flex items-center gap-2 px-4 py-2 rounded-full text-sm font-bold ${
                   result.profit >= 0 

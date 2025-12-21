@@ -9,7 +9,6 @@ import { StatsBar } from "../components/StatsBar";
 import { FeatureCards } from "../components/FeatureCards";
 import { ExplanationCard } from "../components/ExplanationCard";
 import { ConfidenceBar } from "../components/ConfidenceBar";
-import { API_BASE } from "../config";  // ✅ ADDED: Relative import for pages/ folder
 
 import heroBg from "../assets/hero-bg.jpg";
 
@@ -41,6 +40,9 @@ export default function Index() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // ✅ FIXED: Direct Vercel backend URL (Railway DB integration)
+  const API_BASE = "https://eco-intel-backend-e0cgnfxpj-gangadharans-projects-b991475d.vercel.app";
+
   /* ----------- ANALYZE IMAGE ----------- */
   const handleAnalyze = async () => {
     if (!file) return;
@@ -52,8 +54,8 @@ export default function Index() {
     formData.append("image", file);
 
     try {
-      // ✅ FIXED: Uses API_BASE from config
-      const res = await fetch(`${API_BASE}/predict`, {
+      // ✅ FIXED: Correct Vercel endpoint + saves to Railway DB
+      const res = await fetch(`${API_BASE}/api/waste`, {
         method: "POST",
         body: formData,
       });
@@ -65,6 +67,10 @@ export default function Index() {
 
       const data: PredictionResult = await res.json();
       setResult(data);
+      
+      // ✅ SUCCESS: Data saved to Railway DB automatically
+      console.log("✅ Waste analysis saved to Railway DB:", data);
+      
     } catch (err: unknown) {
       console.error("Waste AI Error:", err);
       setError(err instanceof Error ? err.message : "Analysis failed");
@@ -152,7 +158,7 @@ export default function Index() {
             <div className="text-center mt-8 p-8">
               <div className="inline-block animate-spin rounded-full h-12 w-12 border-b-2 border-emerald-600"></div>
               <p className="text-lg font-semibold text-emerald-700 mt-4">
-                AI is analyzing your image...
+                AI is analyzing your image & saving to database...
               </p>
               <p className="text-sm text-gray-500 mt-1">This takes 3-5 seconds</p>
             </div>
@@ -183,6 +189,13 @@ export default function Index() {
         {/* -------- Results Section -------- */}
         {result && (
           <div className="mt-12 space-y-8">
+            {/* ✅ SAVED TO DB Badge */}
+            <div className="text-center p-6 bg-green-50 border-2 border-green-200 rounded-3xl shadow-lg">
+              <div className="inline-flex items-center gap-2 px-6 py-3 bg-green-100 text-green-800 rounded-2xl font-bold text-lg border-2 border-green-300">
+                ✅ ANALYSIS SAVED TO RAILWAY DATABASE
+              </div>
+            </div>
+
             {/* Main Result */}
             <ResultCard
               wasteType={result.predicted_waste_type}

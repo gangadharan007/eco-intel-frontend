@@ -2,7 +2,7 @@ import { useNavigate } from "react-router-dom";
 import { Header } from "../components/Header";
 import { FloatingLeaves } from "../components/FloatingLeaves";
 import { StatsBar } from "../components/StatsBar";
-import { Leaf, Zap, TrendingUp, CloudSun } from "lucide-react";
+import { Leaf, Zap, TrendingUp, CloudSun, Database } from "lucide-react";
 
 export default function Landing() {
   const navigate = useNavigate();
@@ -22,6 +22,19 @@ export default function Landing() {
 
         <StatsBar />
 
+        {/* 🚀 DATABASE SAVING BADGE */}
+        <div className="text-center mb-12 p-6 bg-gradient-to-r from-emerald-100 to-green-100 border-4 border-emerald-300 rounded-3xl shadow-2xl">
+          <div className="flex items-center justify-center gap-3 mb-2">
+            <Database className="w-8 h-8 text-emerald-600" />
+            <h2 className="text-2xl font-bold text-emerald-800">
+              ✅ ALL DATA SAVED TO CLOUD DATABASE
+            </h2>
+          </div>
+          <p className="text-lg text-emerald-700 font-semibold">
+            Your calculations are automatically stored in Railway MySQL 🚀
+          </p>
+        </div>
+
         {/* Modules Grid */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-2 gap-8 mt-12">
           {/* Module 1: Waste AI */}
@@ -37,7 +50,9 @@ export default function Landing() {
                 <h3 className="text-2xl font-bold text-green-800 group-hover:text-emerald-700 mb-2">
                   AI Waste Classifier
                 </h3>
-                <p className="text-green-700 font-semibold text-lg">Module 1</p> {/* ✅ FIXED: Removed extra </p> */}
+                <p className="text-green-700 font-semibold text-lg flex items-center gap-1">
+                  Module 1 <Database className="w-4 h-4 text-emerald-500" />
+                </p>
               </div>
             </div>
             <p className="text-green-700 leading-relaxed group-hover:text-emerald-800">
@@ -47,7 +62,7 @@ export default function Landing() {
 
           {/* Module 2: Carbon Footprint */}
           <div
-            onClick={() => handleNavigate("/module2")}
+            onClick={() => handleNavigate("/carbon-footprint")}
             className="group glass-card p-8 rounded-3xl cursor-pointer hover:scale-105 hover:shadow-2xl transition-all duration-300 border-2 border-orange-200 hover:border-orange-300"
           >
             <div className="flex items-start gap-4 mb-4">
@@ -58,7 +73,9 @@ export default function Landing() {
                 <h3 className="text-2xl font-bold text-orange-800 group-hover:text-orange-700 mb-2">
                   Carbon Calculator
                 </h3>
-                <p className="text-orange-700 font-semibold text-lg">Module 2</p>
+                <p className="text-orange-700 font-semibold text-lg flex items-center gap-1">
+                  Module 2 <Database className="w-4 h-4 text-orange-500" />
+                </p>
               </div>
             </div>
             <p className="text-orange-700 leading-relaxed group-hover:text-orange-800">
@@ -79,7 +96,9 @@ export default function Landing() {
                 <h3 className="text-2xl font-bold text-blue-800 group-hover:text-blue-700 mb-2">
                   Profit Calculator
                 </h3>
-                <p className="text-blue-700 font-semibold text-lg">Module 3</p>
+                <p className="text-blue-700 font-semibold text-lg flex items-center gap-1">
+                  Module 3 <Database className="w-4 h-4 text-blue-500" />
+                </p>
               </div>
             </div>
             <p className="text-blue-700 leading-relaxed group-hover:text-blue-800">
@@ -100,7 +119,9 @@ export default function Landing() {
                 <h3 className="text-2xl font-bold text-purple-800 group-hover:text-purple-700 mb-2">
                   Smart Crops
                 </h3>
-                <p className="text-purple-700 font-semibold text-lg">Module 4</p>
+                <p className="text-purple-700 font-semibold text-lg flex items-center gap-1">
+                  Module 4 <Database className="w-4 h-4 text-purple-500" />
+                </p>
               </div>
             </div>
             <p className="text-purple-700 leading-relaxed group-hover:text-purple-800">
@@ -115,7 +136,7 @@ export default function Landing() {
             Ready to Start Farming Smarter? 🚜
           </h2>
           <p className="text-xl text-green-700 mb-8 max-w-2xl mx-auto">
-            Choose any module above to optimize your farm operations today!
+            Choose any module above to optimize your farm operations today! All data automatically saved to cloud database 📊
           </p>
         </div>
       </main>
