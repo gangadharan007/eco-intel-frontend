@@ -12,7 +12,7 @@ import { ConfidenceBar } from "../components/ConfidenceBar";
 
 import heroBg from "../assets/hero-bg.jpg";
 
-// ✅ Real ML imports
+// Real ML imports (MobileNet inference)
 import * as tf from "@tensorflow/tfjs";
 import * as mobilenet from "@tensorflow-models/mobilenet";
 
@@ -31,104 +31,13 @@ interface PredictionResult {
   status: string;
   message: string;
 
-  // ✅ NEW REQUIREMENTS
-  detected_item: string;
-  recyclable: boolean;
   minerals?: string[];
-
   manure_guidance?: ManureGuidance[];
 }
 
-interface WasteTypeInfo {
-  keywords: string[];
-  color: string;
-}
+// ✅ FIX: type-only union (removes unused runtime const, fixes eslint warning) [web:606]
+type SupportedWasteType = "organic" | "recyclable" | "hazardous";
 
-/**
- * Must match ResultCard's WasteType exactly:
- * export type WasteType = "organic" | "recyclable" | "hazardous";
- */
-const SUPPORTED_WASTE_TYPES = ["organic", "recyclable", "hazardous"] as const;
-type SupportedWasteType = (typeof SUPPORTED_WASTE_TYPES)[number];
-
-// ✅ runtime usage to avoid "type-only" lint
-const SUPPORTED_WASTE_TYPE_SET = new Set<SupportedWasteType>(SUPPORTED_WASTE_TYPES);
-
-const WASTE_INFO: Record<SupportedWasteType, WasteTypeInfo> = {
-  organic: {
-    keywords: ["food", "vegetable", "fruit", "leaf", "plant", "peel", "scraps"],
-    color: "green/brown",
-  },
-  recyclable: {
-    keywords: ["bottle", "paper", "cardboard", "can", "packaging"],
-    color: "mixed",
-  },
-  hazardous: {
-    keywords: ["battery", "chemical", "paint", "pesticide", "medical"],
-    color: "labeled/colored",
-  },
-};
-
-// ✅ Global model cache (loads only once)
-let mobilenetModel: mobilenet.MobileNet | null = null;
-let mobilenetModelPromise: Promise<mobilenet.MobileNet> | null = null;
-
-async function getMobileNetModel(): Promise<mobilenet.MobileNet> {
-  if (mobilenetModel) return mobilenetModel;
-
-  if (!mobilenetModelPromise) {
-    mobilenetModelPromise = (async () => {
-      try {
-        await tf.ready();
-        const m = await mobilenet.load();
-        mobilenetModel = m;
-        return m;
-      } catch (e) {
-        mobilenetModelPromise = null; // allow retry
-        throw e;
-      }
-    })();
-  }
-
-  return mobilenetModelPromise;
-}
-
-const ORGANIC_KEYWORDS = [
-  "apple",
-  "banana",
-  "orange",
-  "lemon",
-  "potato",
-  "carrot",
-  "tomato",
-  "onion",
-  "garlic",
-  "pepper",
-  "fruit",
-  "vegetable",
-  "leaf",
-  "plant",
-  "peel",
-  "food",
-  "bread",
-  "rice",
-  "pasta",
-];
-
-const HAZARDOUS_KEYWORDS = [
-  "battery",
-  "chemical",
-  "medicine",
-  "pill",
-  "syringe",
-  "needle",
-  "paint",
-  "solvent",
-  "pesticide",
-  "herbicide",
-];
-
-// ✅ minerals list (shown only for organic)
 const ORGANIC_MINERALS = [
   "N (Nitrogen)",
   "P (Phosphorus)",
@@ -142,16 +51,66 @@ const ORGANIC_MINERALS = [
   "Cu (Copper)",
 ];
 
+// Global model cache
+let mobilenetModel: mobilenet.MobileNet | null = null;
+let mobilenetModelPromise: Promise<mobilenet.MobileNet> | null = null;
+
+async function getMobileNetModel(): Promise<mobilenet.MobileNet> {
+  if (mobilenetModel) return mobilenetModel;
+
+  if (!mobilenetModelPromise) {
+    mobilenetModelPromise = (async () => {
+      await tf.ready();
+      const m = await mobilenet.load();
+      mobilenetModel = m;
+      return m;
+    })();
+  }
+
+  return mobilenetModelPromise;
+}
+
 function containsKeyword(label: string, keywords: string[]) {
   const lower = label.toLowerCase();
   return keywords.some((kw) => lower.includes(kw));
 }
 
+const ORGANIC_KEYWORDS = [
+  "banana",
+  "apple",
+  "orange",
+  "lemon",
+  "potato",
+  "carrot",
+  "tomato",
+  "vegetable",
+  "fruit",
+  "leaf",
+  "plant",
+  "food",
+  "peel",
+  "bread",
+  "rice",
+];
+
+const HAZARDOUS_KEYWORDS = [
+  "battery",
+  "chemical",
+  "medicine",
+  "pill",
+  "syringe",
+  "needle",
+  "paint",
+  "pesticide",
+  "herbicide",
+  "solvent",
+];
+
 /**
- * Improved mapping:
- * Uses top-5 predictions to reduce “one bad top label” mistakes. [web:34]
+ * Force exactly one of: organic | recyclable | hazardous
+ * Uses top-5 mobilenet predictions
  */
-function mapPredictionsToWaste(
+function decideWasteType(
   preds: Array<{ className: string; probability: number }>
 ): { type: SupportedWasteType; confidence: number; reason: string } {
   const top = preds[0];
@@ -164,12 +123,11 @@ function mapPredictionsToWaste(
     .filter((p) => p.probability >= 0.08 && containsKeyword(p.className, HAZARDOUS_KEYWORDS))
     .reduce((sum, p) => sum + p.probability, 0);
 
-  // Decision rules
   if (hazardousScore >= 0.12) {
     return {
       type: "hazardous",
       confidence: Math.min(1, 0.6 * hazardousScore + 0.4 * top.probability),
-      reason: "Top-K labels suggest hazardous item(s).",
+      reason: "Matched hazardous keywords in top predictions.",
     };
   }
 
@@ -177,14 +135,14 @@ function mapPredictionsToWaste(
     return {
       type: "organic",
       confidence: Math.min(1, 0.6 * organicScore + 0.4 * top.probability),
-      reason: "Top-K labels suggest food/plant material.",
+      reason: "Matched organic keywords in top predictions.",
     };
   }
 
   return {
     type: "recyclable",
     confidence: Math.min(1, 0.7 * top.probability + 0.3 * 0.5),
-    reason: "Not confidently organic/hazardous → treat as recyclable.",
+    reason: "No organic/hazardous signal → classified as recyclable.",
   };
 }
 
@@ -214,86 +172,58 @@ async function fileToCanvas(file: File): Promise<HTMLCanvasElement> {
   }
 }
 
-async function classifyWaste(fileParam: File): Promise<{
-  top1: { class: SupportedWasteType; confidence: number }; // confidence 0..1
-  detected_item: string;
-  recyclable: boolean;
-  minerals?: string[];
+async function classifyWaste(
+  fileParam: File
+): Promise<{
+  top1: { class: SupportedWasteType; confidence: number }; // 0..1
   explanations: string[];
   status: string;
   message: string;
   organic: boolean;
+  minerals?: string[];
   manure: ManureGuidance;
 }> {
   const model = await getMobileNetModel();
   const canvas = await fileToCanvas(fileParam);
 
-  const fileSizeKb = Math.max(1, Math.round(fileParam.size / 1024));
-  const fileName = fileParam.name || "uploaded-image";
-
-  // topK supported by mobilenet.classify [web:34]
   const preds = await model.classify(canvas, 5);
   if (preds.length === 0) throw new Error("No predictions returned by model");
 
-  const detected_item = preds[0].className;
+  const decided = decideWasteType(preds);
+  const isOrganic = decided.type === "organic";
 
-  const mapped = mapPredictionsToWaste(preds);
-  if (!SUPPORTED_WASTE_TYPE_SET.has(mapped.type)) {
-    throw new Error(
-      `Unsupported waste type "${mapped.type}". Supported: ${SUPPORTED_WASTE_TYPES.join(", ")}`
-    );
-  }
+  const confidencePct = Math.round(decided.confidence * 100 * 10) / 10;
 
-  const isOrganic = mapped.type === "organic";
-  const recyclable = mapped.type === "recyclable";
-  const minerals = isOrganic ? ORGANIC_MINERALS : undefined;
+  const status = isOrganic ? "compostable" : decided.type;
 
-  const confidencePct = Math.round(mapped.confidence * 100 * 10) / 10;
-  const info = WASTE_INFO[mapped.type];
-
-  // Compost nutrient note based on kitchen-waste compost study (example values) [web:105]
-  const organicNutrientNote = isOrganic
-    ? "Typical compost nutrients include N, P, K plus Ca, Mg, S and micronutrients like Zn, Cu, Fe, Mn (varies by feedstock)."
-    : "";
-
-  const status = isOrganic ? "compostable" : mapped.type;
-
-  const message = isOrganic
-    ? `Item: ${detected_item} | Compostable ✅ | Minerals: ${ORGANIC_MINERALS.slice(0, 6).join(
-        ", "
-      )}...`
-    : recyclable
-    ? `Item: ${detected_item} | Recyclable ✅ | Send to recycling stream.`
-    : `Item: ${detected_item} | Hazardous ⚠️ | Special disposal required.`;
+  const message =
+    decided.type === "organic"
+      ? `ORGANIC waste detected. Minerals after composting: ${ORGANIC_MINERALS.join(", ")}.`
+      : decided.type === "hazardous"
+      ? "HAZARDOUS waste detected. Do not compost; dispose safely."
+      : "RECYCLABLE waste detected. Segregate and send to recycling.";
 
   const explanations: string[] = [
-    `File: ${fileName} (${fileSizeKb} KB)`,
-    `Detected item (ML): "${detected_item}"`,
-    `Waste category: ${mapped.type} (${confidencePct}%)`,
-    `Reason: ${mapped.reason}`,
-    `Expected look: ${info.color}; hints: ${info.keywords.slice(0, 3).join(", ")}`,
-    `Top-3 ML: ${preds
+    `Waste type: ${decided.type} (${confidencePct}%)`,
+    `Decision: ${decided.reason}`,
+    `Top-3 model guesses: ${preds
       .slice(0, 3)
       .map((p) => `${p.className} (${Math.round(p.probability * 100)}%)`)
       .join(" | ")}`,
-    ...(isOrganic ? [organicNutrientNote] : []),
   ];
 
   return {
-    top1: { class: mapped.type, confidence: mapped.confidence },
-    detected_item,
-    recyclable,
-    minerals,
+    top1: { class: decided.type, confidence: decided.confidence },
     explanations,
     status,
     message,
     organic: isOrganic,
+    minerals: isOrganic ? ORGANIC_MINERALS : undefined,
     manure: {
       waste_name: "Kitchen/Garden Organic Waste",
       compost_method: "Aerated pile or vermicomposting",
       preparation_time: "45–60 days",
-      nutrients:
-        "Primary NPK + secondary (Ca, Mg, S) + micronutrients (Zn, Cu, Fe, Mn) (varies by waste).",
+      nutrients: "NPK + secondary and micronutrients (varies by waste).",
       suitable_crops: "Tomato, Chili, Brinjal, Onion, Leafy greens",
     },
   };
@@ -321,11 +251,7 @@ export default function Index() {
         explanation: predictions.explanations,
         status: predictions.status,
         message: predictions.message,
-
-        detected_item: predictions.detected_item,
-        recyclable: predictions.recyclable,
         minerals: predictions.minerals,
-
         manure_guidance: predictions.organic ? [predictions.manure] : undefined,
       };
 
@@ -404,9 +330,7 @@ export default function Index() {
               <p className="text-lg font-semibold text-emerald-700 mt-4">
                 🤖 AI is analyzing your image...
               </p>
-              <p className="text-sm text-gray-500 mt-1">
-                First run may take longer (model download).
-              </p>
+              <p className="text-sm text-gray-500 mt-1">First run may take longer (model download).</p>
             </div>
           )}
         </section>
@@ -434,7 +358,6 @@ export default function Index() {
         {result && (
           <div className="mt-12 space-y-8">
             <ResultCard wasteType={result.predicted_waste_type} confidence={result.confidence} />
-
             <ConfidenceBar confidence={result.confidence} />
 
             <div className="glass-card p-6 rounded-2xl text-center">
@@ -454,14 +377,11 @@ export default function Index() {
 
               <p className="mt-3 text-lg font-semibold text-gray-700">{result.message}</p>
 
-              {/* Extra requirement info (no new components needed) */}
-              <div className="mt-3 text-sm text-gray-600">
-                <div>Detected item: {result.detected_item}</div>
-                <div>Recyclable: {result.recyclable ? "Yes" : "No"}</div>
-                {result.predicted_waste_type === "organic" && result.minerals && (
-                  <div>Possible minerals/nutrients: {result.minerals.join(", ")}</div>
-                )}
-              </div>
+              {result.predicted_waste_type === "organic" && result.minerals && (
+                <p className="mt-2 text-sm text-gray-600">
+                  Minerals/nutrients after composting: {result.minerals.join(", ")}
+                </p>
+              )}
             </div>
 
             {result.explanation.length > 0 && <ExplanationCard explanation={result.explanation} />}
