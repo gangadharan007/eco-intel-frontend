@@ -62,7 +62,7 @@ export default function Landing() {
 
           {/* Module 2: Carbon Footprint */}
           <div
-            onClick={() => handleNavigate("/Carbon-footprint")}
+            onClick={() => handleNavigate("/carbon-footprint")}
             className="group glass-card p-8 rounded-3xl cursor-pointer hover:scale-105 hover:shadow-2xl transition-all duration-300 border-2 border-orange-200 hover:border-orange-300"
           >
             <div className="flex items-start gap-4 mb-4">
