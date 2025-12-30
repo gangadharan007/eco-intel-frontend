@@ -11,9 +11,10 @@ function App() {
       <Routes>
         <Route path="/" element={<Landing />} />
         <Route path="/waste-ai" element={<Index />} />
-        <Route path="/module2" element={<CarbonFootprint />} />
+        <Route path="/carbon-footprint" element={<CarbonFootprint />} />
         <Route path="/profit-estimator" element={<ProfitEstimator />} />
         <Route path="/crop-recommendation" element={<CropRecommendation />} />
+<Route path="*" element={<div style={{ padding: 24 }}>Not Found</div>} />
 
       </Routes>
     </BrowserRouter>
