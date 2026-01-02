@@ -22,17 +22,12 @@ export default function Landing() {
 
         <StatsBar />
 
-        {/* 🚀 DATABASE SAVING BADGE */}
-        <div className="text-center mb-12 p-6 bg-gradient-to-r from-emerald-100 to-green-100 border-4 border-emerald-300 rounded-3xl shadow-2xl">
-          <div className="flex items-center justify-center gap-3 mb-2">
-            <Database className="w-8 h-8 text-emerald-600" />
-            <h2 className="text-2xl font-bold text-emerald-800">
-              ✅ ALL DATA SAVED TO CLOUD DATABASE
-            </h2>
-          </div>
-          <p className="text-lg text-emerald-700 font-semibold">
-            Your calculations are automatically stored in Railway MySQL 🚀
-          </p>
+        {/* Small cloud DB badge */}
+        <div className="flex justify-center mb-6">
+          <span className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200 text-sm font-medium">
+            <Database className="w-4 h-4" />
+            Data saved to cloud DB
+          </span>
         </div>
 
         {/* Modules Grid */}
@@ -136,7 +131,7 @@ export default function Landing() {
             Ready to Start Farming Smarter? 🚜
           </h2>
           <p className="text-xl text-green-700 mb-8 max-w-2xl mx-auto">
-            Choose any module above to optimize your farm operations today! All data automatically saved to cloud database 📊
+            Choose any module above to optimize your farm operations today!
           </p>
         </div>
       </main>
